@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "noImplicitAny": true,
+    "strict": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictNullChecks": true
+  }
+}

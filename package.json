@@ -1,0 +1,17 @@
+{
+  "name": "lc",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "ulc": "ts-node untyped-lambda-calculus/main.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "fp-ts": "^2.8.5",
+    "ts-node": "^9.0.0",
+    "typescript": "^4.0.5"
+  }
+}
