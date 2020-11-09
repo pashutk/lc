@@ -1,5 +1,6 @@
 import { InputStream } from "./inputStream";
 import { TokenStream } from "./tokenStream";
+import { parse } from "./parser";
 
 const program = `# this is a comment
 
@@ -24,7 +25,5 @@ print-range(1, 5);`;
 
 const is = InputStream(program);
 const ts = TokenStream(is);
-let i = 200;
-while (i--) {
-  console.log(ts.next());
-}
+const ast = parse(ts);
+console.log(ast);

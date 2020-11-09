@@ -1,32 +1,39 @@
-import { TokenStream } from "./tokenStream";
-import { AST, NodeLambda } from "./ast";
-import { Predicate } from "fp-ts/lib/function";
+import { TokenStream, isOp as isOpToken, Operator } from "./tokenStream";
+import { AST, NodeLambda, NodeCall, VarName, NodeProg, NodeBool, NodeIf } from "./ast";
 
 // https://en.wikipedia.org/wiki/Recursive_descent_parser
 
-const FALSE = { type: "bool", value: false };
+const FALSE = { type: "bool", value: false } as const;
 
-const PRECEDENCE = {
-  "=": 1,
-  "||": 2,
-  "&&": 3,
-  "<": 7,
-  ">": 7,
-  "<=": 7,
-  ">=": 7,
-  "==": 7,
-  "!=": 7,
-  "+": 10,
-  "-": 10,
-  "*": 20,
-  "/": 20,
-  "%": 20,
-} as const;
+const precedence = (o: Operator): number => {
+  switch (o) {
+    case "=":
+      return 1;
+    case "||":
+      return 2;
+    case "&&":
+      return 3;
+    case "<":
+    case ">":
+    case "<=":
+    case ">=":
+    case "==":
+    case "!=":
+      return 7;
+    case "+":
+    case "-":
+      return 10;
+    case "*":
+    case "/":
+    case "%":
+      return 20;
+  }
+};
 
-const parse = (input: TokenStream): AST => {
-  const isPunc: Predicate<string> = (ch) => {
+export const parse = (input: TokenStream): AST => {
+  const isPunc = (ch: string) => {
     const token = input.peek();
-    return token.type === "pnc" && (!ch || token.value === ch);
+    return token.type === "pnc" && (!ch || token.value === ch) && token;
   };
 
   const skipPunc = (ch: string) => {
@@ -37,7 +44,7 @@ const parse = (input: TokenStream): AST => {
     }
   };
 
-  const delimited = (start: string, stop: string, separator: string, parser: () => string) => {
+  const delimited = <A>(start: string, stop: string, separator: string, parser: () => A): A[] => {
     const result = [];
     let first = true;
     skipPunc(start);
@@ -55,9 +62,9 @@ const parse = (input: TokenStream): AST => {
     return result;
   };
 
-  const parseVarname = () => {
+  const parseVarname = (): VarName => {
     var name = input.next();
-    if (name.type != "var") {
+    if (name.type !== "var") {
       input.croak("Expecting variable name");
     }
     return name.value;
@@ -69,14 +76,128 @@ const parse = (input: TokenStream): AST => {
     body: parseExpression(),
   });
 
-  // const maybeCall = (expr: () => unknown) => {
-  //   const exprResult = expr();
-  //   return isPunc("(") ? parse_call(exprResult) : exprResult;
-  // };
+  const parseCall = (func: AST): NodeCall => ({
+    type: "call",
+    func: func,
+    args: delimited("(", ")", ",", parseExpression),
+  });
 
-  // const parseExpression = () => {
-  //   return maybeCall(() => maybe_binary(parse_atom(), 0));
-  // };
+  const maybeCall = (expr: () => AST) => {
+    const exprResult = expr();
+    return isPunc("(") ? parseCall(exprResult) : exprResult;
+  };
+
+  const parseProg = (): typeof FALSE | AST | NodeProg => {
+    const prog = delimited("{", "}", ";", parseExpression);
+    if (prog.length == 0) return FALSE;
+    if (prog.length == 1) return prog[0];
+    return { type: "prog", prog: prog };
+  };
+
+  const isKw = (kw: string) => {
+    const token = input.peek();
+    return token.type === "kw" && (!kw || token.value == kw) && token;
+  };
+
+  const skipKw = (kw: string): void => {
+    if (isKw(kw)) {
+      input.next();
+    } else {
+      input.croak('Expecting keyword: "' + kw + '"');
+    }
+  };
+
+  const parseIf = (): NodeIf => {
+    skipKw("if");
+    const cond = parseExpression();
+    if (!isPunc("{")) skipKw("then");
+    const then = parseExpression();
+    const ret: NodeIf = {
+      type: "if",
+      cond,
+      then,
+    };
+    if (isKw("else")) {
+      input.next();
+      ret.else = parseExpression();
+    }
+    return ret;
+  };
+
+  const parseBool = (): NodeBool => {
+    const token = input.next();
+    if (token.type !== "kw") {
+      return unexpected();
+    }
+
+    return {
+      type: "bool",
+      value: token.value == "true",
+    };
+  };
+
+  const unexpected = (): never => {
+    input.croak("Unexpected token: " + JSON.stringify(input.peek()));
+  };
+
+  const parseAtom = (): AST =>
+    // @ts-ignore
+    maybeCall(() => {
+      if (isPunc("(")) {
+        input.next();
+        const exp = parseExpression();
+        skipPunc(")");
+        return exp;
+      }
+      if (isPunc("{")) return parseProg();
+      if (isKw("if")) return parseIf();
+      if (isKw("true") || isKw("false")) return parseBool();
+      if (isKw("lambda") || isKw("λ")) {
+        input.next();
+        return parseLambda();
+      }
+      const tok = input.next();
+      if (tok.type == "var" || tok.type == "num" || tok.type == "str") return tok;
+      unexpected();
+    });
+
+  const isOp = (op?: string) => {
+    const token = input.peek();
+    return isOpToken(token) && (!op || token.value == op) && token;
+  };
+
+  type Binary = {
+    type: "assign" | "binary";
+    operator: string;
+    left: Binary;
+    right: Binary;
+  };
+
+  const maybeBinary = (left: Binary, myPrecedence: number): Binary => {
+    const token = isOp();
+    if (token) {
+      var hisPrecedence = precedence(token.value);
+      if (hisPrecedence > myPrecedence) {
+        input.next();
+        return maybeBinary(
+          {
+            type: token.value === "=" ? "assign" : "binary",
+            operator: token.value,
+            left: left,
+            // @ts-ignore
+            right: maybeBinary(parseAtom(), hisPrecedence),
+          },
+          myPrecedence,
+        );
+      }
+    }
+    return left;
+  };
+
+  const parseExpression = () => {
+    // @ts-ignore
+    return maybeCall(() => maybeBinary(parseAtom(), 0));
+  };
 
   const parseToplevel = (): AST => {
     const prog = [];
@@ -90,99 +211,4 @@ const parse = (input: TokenStream): AST => {
   };
 
   return parseToplevel();
-  // function is_kw(kw) {
-  //   var tok = input.peek();
-  //   return tok && tok.type == "kw" && (!kw || tok.value == kw) && tok;
-  // }
-  // function is_op(op) {
-  //   var tok = input.peek();
-  //   return tok && tok.type == "op" && (!op || tok.value == op) && tok;
-  // }
-  // function skip_kw(kw) {
-  //   if (is_kw(kw)) input.next();
-  //   else input.croak('Expecting keyword: "' + kw + '"');
-  // }
-  // function skip_op(op) {
-  //   if (is_op(op)) input.next();
-  //   else input.croak('Expecting operator: "' + op + '"');
-  // }
-  // function unexpected() {
-  //   input.croak("Unexpected token: " + JSON.stringify(input.peek()));
-  // }
-  // function maybe_binary(left, my_prec) {
-  //   var tok = is_op();
-  //   if (tok) {
-  //     var his_prec = PRECEDENCE[tok.value];
-  //     if (his_prec > my_prec) {
-  //       input.next();
-  //       return maybe_binary(
-  //         {
-  //           type: tok.value == "=" ? "assign" : "binary",
-  //           operator: tok.value,
-  //           left: left,
-  //           right: maybe_binary(parse_atom(), his_prec),
-  //         },
-  //         my_prec,
-  //       );
-  //     }
-  //   }
-  //   return left;
-  // }
-  // function parse_call(func) {
-  //   return {
-  //     type: "call",
-  //     func: func,
-  //     args: delimited("(", ")", ",", parseExpression),
-  //   };
-  // }
-
-  // function parse_if() {
-  //   skip_kw("if");
-  //   var cond = parseExpression();
-  //   if (!isPunc("{")) skip_kw("then");
-  //   var then = parseExpression();
-  //   var ret = {
-  //     type: "if",
-  //     cond: cond,
-  //     then: then,
-  //   };
-  //   if (is_kw("else")) {
-  //     input.next();
-  //     ret.else = parseExpression();
-  //   }
-  //   return ret;
-  // }
-  // function parse_bool() {
-  //   return {
-  //     type: "bool",
-  //     value: input.next().value == "true",
-  //   };
-  // }
-  // function parse_atom() {
-  //   return maybeCall(function () {
-  //     if (isPunc("(")) {
-  //       input.next();
-  //       var exp = parseExpression();
-  //       skipPunc(")");
-  //       return exp;
-  //     }
-  //     if (isPunc("{")) return parse_prog();
-  //     if (is_kw("if")) return parse_if();
-  //     if (is_kw("true") || is_kw("false")) return parse_bool();
-  //     if (is_kw("lambda") || is_kw("λ")) {
-  //       input.next();
-  //       return parse_lambda();
-  //     }
-  //     var tok = input.next();
-  //     if (tok.type == "var" || tok.type == "num" || tok.type == "str")
-  //       return tok;
-  //     unexpected();
-  //   });
-  // }
-  // function parse_prog() {
-  //   var prog = delimited("{", "}", ";", parseExpression);
-  //   if (prog.length == 0) return FALSE;
-  //   if (prog.length == 1) return prog[0];
-  //   return { type: "prog", prog: prog };
-  // }
 };
