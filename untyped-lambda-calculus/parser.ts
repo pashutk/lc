@@ -30,7 +30,7 @@ const precedence = (o: Operator): number => {
   }
 };
 
-export const parse = (input: TokenStream): AST => {
+export const parse = (input: TokenStream): NodeProg => {
   const isPunc = (ch: string) => {
     const token = input.peek();
     return token.type === "pnc" && (!ch || token.value === ch) && token;
@@ -199,7 +199,7 @@ export const parse = (input: TokenStream): AST => {
     return maybeCall(() => maybeBinary(parseAtom(), 0));
   };
 
-  const parseToplevel = (): AST => {
+  const parseToplevel = (): NodeProg => {
     const prog = [];
     while (!input.eof()) {
       prog.push(parseExpression());

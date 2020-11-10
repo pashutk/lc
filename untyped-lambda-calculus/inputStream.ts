@@ -1,39 +1,50 @@
-export type InputStream = {
-  next: () => string;
-  peek: () => string;
-  eof: () => boolean;
-  croak: (msg: string) => never;
+import { pipe } from "fp-ts/lib/pipeable";
+import * as S from "fp-ts/State";
+
+export type ISState = {
+  input: string;
+  pos: number;
+  line: number;
+  col: number;
 };
 
-export const InputStream = (input: string): InputStream => {
-  let pos = 0;
-  let line = 1;
-  let col = 0;
+type Char = string;
 
-  const peek = () => input.charAt(pos);
+type ISS<Result> = S.State<ISState, Result>;
 
-  return {
-    next() {
-      const ch = input.charAt(pos++);
+// Default constructor for initial state
+export const create = (input: string): ISState => ({
+  input,
+  pos: 0,
+  line: 1,
+  col: 0,
+});
 
-      if (ch === "\n") {
-        line++;
-        col = 0;
-      } else {
-        col++;
-      }
-
-      return ch;
+// Read next char
+export const next: ISS<Char> = ({ input, pos, line, col }) => {
+  const ch = input.charAt(pos);
+  const isNewLine = ch === "\n";
+  return [
+    ch,
+    {
+      input,
+      pos: pos + 1,
+      line: isNewLine ? line + 1 : line,
+      col: isNewLine ? 0 : col + 1,
     },
-
-    peek,
-
-    eof() {
-      return peek() === "";
-    },
-
-    croak(msg: string) {
-      throw new Error(`${msg} (${line}:${col})`);
-    },
-  };
+  ];
 };
+
+// Look at current char
+export const peek: ISS<Char> = S.gets(({ input, pos }) => input.charAt(pos));
+
+// Is end of input?
+export const eof: ISS<boolean> = pipe(
+  peek,
+  S.map((ch) => ch === ""),
+);
+
+export const croak = (msg: string): ISS<never> =>
+  S.gets(({ line, col }) => {
+    throw new Error(`${msg} (${line}:${col})`);
+  });

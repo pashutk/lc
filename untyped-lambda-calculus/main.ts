@@ -1,6 +1,7 @@
-import { InputStream } from "./inputStream";
+import * as IS from "./inputStream";
 import { TokenStream } from "./tokenStream";
 import { parse } from "./parser";
+import { pipe } from "fp-ts/lib/pipeable";
 
 const program = `# this is a comment
 
@@ -23,7 +24,9 @@ print-range = λ(a, b)             # \`λ\` is synonym to \`lambda\`
                 };
 print-range(1, 5);`;
 
-const is = InputStream(program);
-const ts = TokenStream(is);
-const ast = parse(ts);
-console.log(ast);
+const program1 = `sum = lambda(a, b) {
+  a + b;
+};
+print(sum(1, 2));`;
+
+console.log(pipe(program, IS.create, TokenStream, parse));

@@ -1,4 +1,4 @@
-import { InputStream } from "./inputStream";
+import * as IS from "./inputStream";
 import { Predicate, not, pipe, Refinement } from "fp-ts/function";
 
 type Char = string;
@@ -101,8 +101,20 @@ export type TokenStream = {
   croak: (msg: string) => never;
 };
 
-export const TokenStream = (input: InputStream): TokenStream => {
+export const TokenStream = (inputState: IS.ISState): TokenStream => {
   let current: Token = empty();
+  let currentInputState = inputState;
+
+  const applyState = <A>([a, s]: [A, IS.ISState]) => {
+    currentInputState = s;
+    return a;
+  };
+  const input = {
+    eof: () => pipe(currentInputState, IS.eof, applyState),
+    peek: () => pipe(currentInputState, IS.peek, applyState),
+    next: () => pipe(currentInputState, IS.next, applyState),
+    croak: (msg: string) => pipe(currentInputState, IS.croak(msg), applyState),
+  };
 
   const readWhile = (predicate: Predicate<string>) => {
     let str = "";
@@ -211,7 +223,7 @@ export const TokenStream = (input: InputStream): TokenStream => {
       };
     }
 
-    input.croak("Can't handle character: " + ch);
+    return input.croak("Can't handle character: " + ch);
   };
 
   const peek = () => {
