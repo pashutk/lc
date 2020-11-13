@@ -22,7 +22,7 @@ export type VarName = string;
 
 export type NodeVar = { type: "var"; value: VarName };
 
-export type NodeLambda = { type: "lambda"; vars: VarName[]; body: AST };
+export type NodeLambda = { type: "lambda"; vars: VarName[]; body: AST; name?: VarName };
 
 export type NodeCall = { type: "call"; func: AST; args: AST[] };
 
@@ -39,7 +39,7 @@ export type NodeBinary = {
 
 export type NodeProg = { type: "prog"; prog: AST[] };
 
-// export type NodeLet = { type: "let", vars: [ VARS... ], body: AST };
+export type NodeLet = { type: "let"; vars: { name: string; def?: AST }[]; body: AST };
 
 export type AST =
   | NodeNum
@@ -51,5 +51,5 @@ export type AST =
   | NodeIf
   | NodeAssign
   | NodeBinary
-  | NodeProg;
-// | NodeLet;
+  | NodeProg
+  | NodeLet;

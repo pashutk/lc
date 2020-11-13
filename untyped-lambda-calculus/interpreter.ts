@@ -105,14 +105,22 @@ const applyOp = <A extends Primitive>(op: Operator, a: A, b: A) => {
 };
 
 const makeLambda = (exp: NodeLambda, env: Env): Lambda => {
-  return (...args: Primitive[]) => {
+  let newEnv = env;
+
+  const lambda = (...args: Primitive[]) => {
     const names = exp.vars;
-    const scope = env.extend();
+    const scope = newEnv.extend();
     for (let i = 0; i < names.length; i++) {
       scope.def(names[i], i < args.length ? args[i] : false);
     }
     return evaluate(exp.body, scope);
   };
+
+  if (exp.name) {
+    newEnv = env.extend();
+    newEnv.def(exp.name, lambda);
+  }
+  return lambda;
 };
 
 export const evaluate = (exp: AST, env: Env): Primitive => {
@@ -124,6 +132,16 @@ export const evaluate = (exp: AST, env: Env): Primitive => {
 
     case "var":
       return env.get(exp.value);
+
+    case "let": {
+      let newEnv = env;
+      exp.vars.forEach((v) => {
+        const scope = newEnv.extend();
+        scope.def(v.name, v.def ? evaluate(v.def, env) : false);
+        newEnv = scope;
+      });
+      return evaluate(exp.body, newEnv);
+    }
 
     case "assign":
       if (exp.left.type !== "var") {

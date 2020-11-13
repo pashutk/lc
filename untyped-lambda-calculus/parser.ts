@@ -1,5 +1,5 @@
-import { TokenStream, isOp as isOpToken, Operator } from "./tokenStream";
-import { AST, NodeLambda, NodeCall, VarName, NodeProg, NodeBool, NodeIf } from "./ast";
+import { TokenStream, isOp as isOpToken, Operator, Keyword } from "./tokenStream";
+import { AST, NodeLambda, NodeCall, VarName, NodeProg, NodeBool, NodeIf, NodeLet } from "./ast";
 
 // https://en.wikipedia.org/wiki/Recursive_descent_parser
 
@@ -70,11 +70,61 @@ export const parse = (input: TokenStream): NodeProg => {
     return name.value;
   };
 
-  const parseLambda = (): NodeLambda => ({
-    type: "lambda",
-    vars: delimited("(", ")", ",", parseVarname),
-    body: parseExpression(),
-  });
+  const parseLambda = (): NodeLambda => {
+    let name: string | undefined = undefined;
+    if (input.peek().type === "var") {
+      const next = input.next();
+      if (next.type !== "var") {
+        throw new Error(`Input peek !== next`);
+      }
+
+      name = next.value;
+    }
+
+    return {
+      type: "lambda",
+      name,
+      vars: delimited("(", ")", ",", parseVarname),
+      body: parseExpression(),
+    };
+  };
+
+  const parseVardef = () => {
+    const name = parseVarname();
+    let def = undefined;
+    if (isOp("=")) {
+      input.next();
+      def = parseExpression();
+    }
+    return { name, def };
+  };
+
+  const parseLet = (): NodeLet | NodeCall => {
+    skipKw("let");
+    if (input.peek().type === "var") {
+      const next = input.next();
+      if (next.type !== "var") {
+        throw new Error(`Input peek !== next`);
+      }
+      const name = next.value;
+      const defs = delimited("(", ")", ",", parseVardef);
+      return {
+        type: "call",
+        func: {
+          type: "lambda",
+          name,
+          vars: defs.map((def) => def.name),
+          body: parseExpression(),
+        },
+        args: defs.map((def) => def.def || FALSE),
+      };
+    }
+    return {
+      type: "let",
+      vars: delimited("(", ")", ",", parseVardef),
+      body: parseExpression(),
+    };
+  };
 
   const parseCall = (func: AST): NodeCall => ({
     type: "call",
@@ -99,7 +149,7 @@ export const parse = (input: TokenStream): NodeProg => {
     return token.type === "kw" && (!kw || token.value == kw) && token;
   };
 
-  const skipKw = (kw: string): void => {
+  const skipKw = (kw: Keyword): void => {
     if (isKw(kw)) {
       input.next();
     } else {
@@ -150,6 +200,7 @@ export const parse = (input: TokenStream): NodeProg => {
         return exp;
       }
       if (isPunc("{")) return parseProg();
+      if (isKw("let")) return parseLet();
       if (isKw("if")) return parseIf();
       if (isKw("true") || isKw("false")) return parseBool();
       if (isKw("lambda") || isKw("λ")) {

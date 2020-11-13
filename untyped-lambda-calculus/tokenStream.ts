@@ -32,6 +32,8 @@ type PuncToken = {
   value: Char;
 };
 
+export type Keyword = "if" | "then" | "else" | "lambda" | "λ" | "true" | "false" | "let";
+
 export type Operator =
   | "="
   | "||"
@@ -90,9 +92,9 @@ const isPunc: Predicate<Char> = (ch) => ",;(){}[]".indexOf(ch) >= 0;
 
 const isOpChar: Refinement<Char, Operator> = (ch): ch is Operator => "+-*/%=&|<>!".indexOf(ch) >= 0;
 
-const keywords = " if then else lambda λ true false ";
+const keywords = new Set(["if", "then", "else", "lambda", "λ", "true", "false", "let"]);
 
-const isKeyword: Predicate<string> = (s) => keywords.indexOf(" " + s + " ") >= 0;
+const isKeyword = (s: string): s is Keyword => keywords.has(s);
 
 export type TokenStream = {
   next: () => Token;
